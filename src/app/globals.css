@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f3eee4;
+  --foreground: #1c1915;
+  --card: #fbf7f0;
+  --card-foreground: #1c1915;
+  --primary: #1e3f34;
+  --primary-foreground: #f6f1e7;
+  --secondary: #e7dfd1;
+  --secondary-foreground: #1c1915;
+  --muted: #efe8db;
+  --muted-foreground: #5e574c;
+  --accent: #efe4d2;
+  --accent-foreground: #1c1915;
+  --destructive: #9a3412;
+  --border: #e0d5c3;
+  --input: #d9cdb8;
+  --ring: #1e3f34;
+  --radius: 0.7rem;
+  --sidebar: #1a332c;
+  --sidebar-foreground: #f4efe6;
+  --clay: #8a4b16;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-clay: var(--clay);
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 4px);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), "Source Sans 3", sans-serif;
+}
+
+.serif {
+  font-family: var(--font-serif), Georgia, serif;
+}
+
+.draft {
+  background: #f7f1e4;
+  border: 1px solid #eadfcd;
+}
