@@ -1,3 +1,4 @@
+import { revealOutlookTokens } from "@/lib/crypto/tokens";
 import { getConfig } from "@/lib/config";
 import { many } from "@/lib/db";
 import { ensureBriefing, makeRuntime, ready, type UserRow } from "@/lib/services/engine";
@@ -9,7 +10,7 @@ export async function POST(request: Request) {
   }
   const db = ready();
   const runtime = makeRuntime(db);
-  const users = many<UserRow>(db, "SELECT * FROM users");
+  const users = many<UserRow>(db, "SELECT * FROM users").map((user) => revealOutlookTokens(user));
   const delivered: string[] = [];
   for (const user of users) {
     const hour = Number(

@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { authCookieOptions, SESSION_MAX_AGE_SECONDS } from "@/lib/auth/cookies";
 import { getConfig } from "@/lib/config";
 import { readSession, signSession } from "@/lib/auth/session";
 import { isDirection, isLoopKind } from "@/lib/domain/types";
@@ -60,12 +61,7 @@ export async function signInDemo(formData: FormData) {
   const user = getUserByEmail(db, email);
   if (!user) bounce("/", "That demo seller is not in the ledger.");
   const jar = await cookies();
-  jar.set("sa_session", signSession(user.id, config.sessionSecret), {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
+  jar.set("sa_session", signSession(user.id, config.sessionSecret), authCookieOptions(config.appUrl, SESSION_MAX_AGE_SECONDS));
   redirect("/briefing");
 }
 

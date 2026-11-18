@@ -32,10 +32,11 @@ Copy `.env.example` to `.env`. Demo mode ignores blank Microsoft and CRM values.
 
 | Variable | Purpose |
 | --- | --- |
-| `APP_URL` | Public origin. Used for the Outlook redirect. |
-| `SESSION_SECRET` | Signs the session cookie. |
-| `DATABASE_PATH` | SQLite file. Default `./data/sales-assistant.db`. |
-| `DEMO_MODE` | `true` seeds two sellers and a demo mailbox. Turn off before any shared deployment. |
+| `APP_URL` | Public origin. Used for the Outlook redirect. Production must be `https://…` with no trailing slash. |
+| `SESSION_SECRET` | Signs the session cookie. Required in production; generate with `openssl rand -base64 32`. |
+| `TOKEN_ENCRYPTION_KEY` | 32-byte key (`openssl rand -base64 32`). Encrypts Outlook access and refresh tokens at rest. Required in production. |
+| `DATABASE_PATH` | SQLite file. Default `./data/sales-assistant.db`. On Railway, `/data/sales-assistant.db` (or the attached volume). |
+| `DEMO_MODE` | `true` seeds two sellers and a demo mailbox. Off in production unless set to `true`. |
 | `ORG_DOMAIN` | Only these Microsoft accounts may sign in. Default `turb0.ai`. |
 | `LLM_PROVIDER` | `heuristic` (offline) or `openai`. |
 | `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` | OpenAI-compatible chat completions. Extraction and drafts ask for JSON. Drafts drop sentences whose numbers are not in the source. |
@@ -50,18 +51,16 @@ Copy `.env.example` to `.env`. Demo mode ignores blank Microsoft and CRM values.
 | `TURB0_SERVICE_ROLE_KEY` | Bypasses row level security. Do not use against production from a laptop. |
 | `NOTES_WEBHOOK_SECRET` | `POST /api/notes/webhook` with `Authorization: Bearer …` and `{ "email", "title", "body" }`. |
 | `JOB_SECRET` | `POST /api/jobs/morning` delivers briefings once the seller’s local hour has reached their briefing hour. |
-| `AUTO_SEND_ENABLED` | Leave `false`. Auto-send is not active in this phase. |
+| `AUTO_SEND_ENABLED` | Leave `false`. The only value that turns it on is `true`. Auto-send is not active in this phase. |
+| `PORT` | Set by Railway. `npm start` listens on `PORT`, or `43123` when it is unset. |
+
+Hosted setup is in [docs/deploy-railway.md](docs/deploy-railway.md). The Entra registration is in [docs/entra-app-registration.md](docs/entra-app-registration.md).
 
 ### Entra app registration
 
-1. Entra admin center → App registrations → New registration.
-2. Supported account types: **Accounts in this organizational directory only** (the turb0.ai tenant).
-3. Redirect URI, Web: `http://127.0.0.1:43123/api/auth/microsoft/callback` plus the production origin when you have one.
-4. Certificates & secrets → new client secret.
-5. API permissions → Microsoft Graph, delegated: `User.Read`, `Mail.Read`, `Mail.Send`, `Calendars.Read`, `offline_access`. Grant admin consent.
-6. Copy the Application (client) id and the Directory (tenant) id into `MICROSOFT_CLIENT_ID` and `MICROSOFT_TENANT_ID`.
+Register a single-tenant Web app in the turb0.ai directory and grant the delegated Graph permissions listed in `MICROSOFT_SCOPES` (`openid`, `profile`, `email`, `offline_access`, `User.Read`, `Mail.Read`, `Mail.Send`, `Calendars.Read`). The click-by-click guide is [docs/entra-app-registration.md](docs/entra-app-registration.md).
 
-Sign-in uses the tenant-specific authorize and token endpoints. The callback checks the id token’s `tid` and that the mailbox is `@turb0.ai`. Each seller’s refresh token is stored on their user row. Graph calls are only made after that connection exists.
+Sign-in uses the tenant-specific authorize and token endpoints. The callback checks the id token’s `tid` and that the mailbox is `@turb0.ai`. Each seller’s access token and refresh token are encrypted with `TOKEN_ENCRYPTION_KEY` before they are written to SQLite. A database that still has plaintext tokens is encrypted in place the next time the app starts with that key set. Graph calls are only made after that connection exists.
 
 The morning briefing is sent with `POST /me/sendMail` to the seller’s own address. Client follow-ups use the same call, and only after Approve.
 

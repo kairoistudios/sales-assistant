@@ -2,13 +2,17 @@ import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { decodeJwtPayload, MICROSOFT_SCOPES, microsoftTokenRequest } from "@/lib/adapters/mail/microsoft";
+import { authCookieOptions, SESSION_MAX_AGE_SECONDS } from "@/lib/auth/cookies";
+import { saveOutlookTokens } from "@/lib/auth/outlook-tokens";
 import { signSession } from "@/lib/auth/session";
 import { getConfig } from "@/lib/config";
+import { outlookTokensCanBeStored, TokenKeyError } from "@/lib/crypto/tokens";
 import { run } from "@/lib/db";
 import { getUserByEmail, ready } from "@/lib/services/engine";
 
 export async function GET(request: Request) {
   const config = getConfig();
+  if (!outlookTokensCanBeStored()) redirect("/?error=token_key");
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -53,16 +57,21 @@ export async function GET(request: Request) {
     user = getUserByEmail(db, email);
   }
   if (!user) redirect("/?error=microsoft");
-  run(
-    db,
-    `UPDATE users SET microsoft_oid = ?, microsoft_access_token = ?, microsoft_refresh_token = ?, microsoft_token_expires = ?, name = ? WHERE id = ?`,
-    [profile.id || user.microsoft_oid, token.access_token, token.refresh_token || user.microsoft_refresh_token, expires, profile.displayName || user.name, user.id],
-  );
-  jar.set("sa_session", signSession(user.id, config.sessionSecret), {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 30,
-  });
+  try {
+    saveOutlookTokens(db, user.id, {
+      accessToken: token.access_token,
+      refreshToken: token.refresh_token || user.microsoft_refresh_token,
+      expiresAt: expires,
+    });
+  } catch (error) {
+    if (error instanceof TokenKeyError) redirect("/?error=token_key");
+    throw error;
+  }
+  run(db, "UPDATE users SET microsoft_oid = ?, name = ? WHERE id = ?", [
+    profile.id || user.microsoft_oid,
+    profile.displayName || user.name,
+    user.id,
+  ]);
+  jar.set("sa_session", signSession(user.id, config.sessionSecret), authCookieOptions(config.appUrl, SESSION_MAX_AGE_SECONDS));
   redirect("/briefing");
 }
