@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "NODE_OPTIONS='--disable-warning=ExperimentalWarning' next dev --turbopack -p 43123 -H 0.0.0.0",
     "build": "next build",
-    "start": "NODE_OPTIONS='--disable-warning=ExperimentalWarning' next start -p 43123 -H 0.0.0.0",
+    "start": "node scripts/start.mjs",
     "lint": "eslint",
     "test": "NODE_OPTIONS='--disable-warning=ExperimentalWarning' vitest run",
     "db:reset": "rm -f data/sales-assistant.db"
@@ -23,6 +23,9 @@
     "react-dom": "19.1.0",
     "tailwind-merge": "^3.7.0",
     "zod": "^4.6.7"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

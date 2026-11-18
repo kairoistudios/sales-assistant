@@ -6,7 +6,8 @@ export function middleware(request: NextRequest) {
     pathname === "/" ||
     pathname.startsWith("/api/auth") ||
     pathname.startsWith("/api/notes") ||
-    pathname.startsWith("/api/jobs")
+    pathname.startsWith("/api/jobs") ||
+    pathname === "/api/health"
   ) {
     return NextResponse.next();
   }

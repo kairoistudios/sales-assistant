@@ -14,12 +14,17 @@ export function openDatabase(file = ":memory:"): Db {
   }
   const db = new DatabaseSync(file);
   db.exec("PRAGMA journal_mode = WAL;");
+  db.exec("PRAGMA busy_timeout = 5000;");
   db.exec(SCHEMA);
   return db;
 }
 
 export function getDatabasePath(): string {
-  return process.env.DATABASE_PATH || path.join(process.cwd(), "data", "sales-assistant.db");
+  if (process.env.DATABASE_PATH) return process.env.DATABASE_PATH;
+  if (process.env.RAILWAY_VOLUME_MOUNT_PATH) {
+    return path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH, "sales-assistant.db");
+  }
+  return path.join(process.cwd(), "data", "sales-assistant.db");
 }
 
 export function getDb(): Db {

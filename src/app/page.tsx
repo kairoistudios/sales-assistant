@@ -1,6 +1,7 @@
 import { signInDemo } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { getConfig, microsoftConfigured } from "@/lib/config";
+import { outlookTokensCanBeStored } from "@/lib/crypto/tokens";
 import { ready, listUsers } from "@/lib/services/engine";
 
 export default async function SignInPage({
@@ -13,6 +14,7 @@ export default async function SignInPage({
   const db = ready();
   const sellers = config.demoMode ? listUsers(db, "org_turb0") : [];
   const microsoft = microsoftConfigured(config);
+  const tokenKeyReady = outlookTokensCanBeStored();
 
   return (
     <div className="mx-auto grid min-h-screen max-w-5xl items-center gap-10 px-5 py-12 md:grid-cols-[1.1fr_0.9fr]">
@@ -35,6 +37,15 @@ export default async function SignInPage({
         {params.error === "tenant" && (
           <p className="mb-4 text-sm text-destructive">That sign-in did not come from the configured Entra tenant.</p>
         )}
+        {params.error === "token_key" ? (
+          <p className="mb-4 text-sm text-destructive">
+            Outlook tokens were not stored. TOKEN_ENCRYPTION_KEY is missing or is not a 32-byte key.
+          </p>
+        ) : microsoft && !tokenKeyReady ? (
+          <p className="mb-4 text-sm text-destructive">
+            Set TOKEN_ENCRYPTION_KEY before anyone connects Outlook. Tokens are encrypted in the database.
+          </p>
+        ) : null}
         {config.demoMode && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">Demo mode. Two sellers, one firm, separate loops.</p>

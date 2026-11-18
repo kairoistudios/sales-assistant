@@ -1,6 +1,9 @@
+import { randomBytes } from "node:crypto";
 import { describe, expect, it } from "vitest";
+import { saveOutlookTokens } from "@/lib/auth/outlook-tokens";
+import { decryptToken } from "@/lib/crypto/tokens";
 import { getConfig } from "@/lib/config";
-import { openDatabase } from "@/lib/db";
+import { one, openDatabase } from "@/lib/db";
 import { seedDemo } from "@/lib/seed/demo";
 import {
   approveItem,
@@ -107,5 +110,77 @@ describe("ledger, briefing, and per-seller scope", () => {
     const vesper = listLoops(rt.db, karimy.id).find((loop) => loop.id === "loop_vesper");
     expect(vesper?.status).toBe("closed");
     expect(vesper?.closed_reason).toBe("replied");
+  });
+
+  it("refreshes Outlook with the plaintext token and stores the new tokens encrypted", async () => {
+    const key = randomBytes(32).toString("base64");
+    const previousKey = process.env.TOKEN_ENCRYPTION_KEY;
+    const originalFetch = globalThis.fetch;
+    process.env.TOKEN_ENCRYPTION_KEY = key;
+    const graphHeaders: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/oauth2/v2.0/token")) {
+        const body = String(init?.body ?? "");
+        expect(body).toContain("refresh_token=refresh-PLAINTEXT-sentinel");
+        expect(body).not.toContain("enc1");
+        return Response.json({
+          access_token: "new-access-token",
+          refresh_token: "new-refresh-token",
+          expires_in: 3600,
+        });
+      }
+      if (url.includes("graph.microsoft.com") && url.endsWith("/me/sendMail")) {
+        graphHeaders.push(new Headers(init?.headers).get("authorization") || "");
+        return new Response(null, { status: 202, headers: { "request-id": "graph-request" } });
+      }
+      if (url.includes("graph.microsoft.com")) {
+        graphHeaders.push(new Headers(init?.headers).get("authorization") || "");
+        return Response.json({ value: [] });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    }) as typeof fetch;
+
+    try {
+      const db = openDatabase(":memory:");
+      seedDemo(db, now);
+      saveOutlookTokens(db, "user_johnny", {
+        accessToken: "expired-access-token",
+        refreshToken: "refresh-PLAINTEXT-sentinel",
+        expiresAt: "2020-01-01T00:00:00.000Z",
+      });
+      const config = getConfig();
+      config.demoMode = false;
+      config.llmProvider = "heuristic";
+      config.crmProvider = "local";
+      config.crmDryRun = true;
+      config.autoSendEnabled = false;
+      config.microsoftTenantId = "tenant-id";
+      config.microsoftClientId = "client-id";
+      config.microsoftClientSecret = "client-secret";
+      const rt = makeRuntime(db, now, config);
+      const summary = await syncMailbox(rt, "user_johnny");
+      expect(summary).toMatch(/Nothing new|Read/);
+      expect(graphHeaders.length).toBeGreaterThan(0);
+      expect(graphHeaders.every((header) => header === "Bearer new-access-token")).toBe(true);
+
+      const raw = one<{ microsoft_access_token: string; microsoft_refresh_token: string }>(
+        db,
+        "SELECT microsoft_access_token, microsoft_refresh_token FROM users WHERE id = ?",
+        ["user_johnny"],
+      );
+      expect(raw?.microsoft_access_token.startsWith("enc1:")).toBe(true);
+      expect(raw?.microsoft_refresh_token.startsWith("enc1:")).toBe(true);
+      expect(raw?.microsoft_access_token).not.toContain("new-access-token");
+      expect(raw?.microsoft_refresh_token).not.toContain("new-refresh-token");
+      expect(raw?.microsoft_refresh_token).not.toContain("PLAINTEXT");
+      expect(decryptToken(raw!.microsoft_access_token)).toBe("new-access-token");
+      expect(decryptToken(raw!.microsoft_refresh_token)).toBe("new-refresh-token");
+      expect(getUserByEmail(db, "johnny@turb0.ai")?.microsoft_refresh_token).toBe("new-refresh-token");
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (previousKey === undefined) delete process.env.TOKEN_ENCRYPTION_KEY;
+      else process.env.TOKEN_ENCRYPTION_KEY = previousKey;
+    }
   });
 });

@@ -7,7 +7,9 @@ import type { LlmProvider } from "@/lib/adapters/llm";
 import { DemoMail } from "@/lib/adapters/mail/demo";
 import { MicrosoftMail, microsoftTokenRequest, MICROSOFT_SCOPES } from "@/lib/adapters/mail/microsoft";
 import type { MailCalendarAdapter, NormalizedEvent, NormalizedMail } from "@/lib/adapters/mail/types";
-import { getConfig, type AppConfig } from "@/lib/config";
+import { migrateStoredOutlookTokens, saveOutlookTokens } from "@/lib/auth/outlook-tokens";
+import { revealOutlookTokens } from "@/lib/crypto/tokens";
+import { assertRuntimeConfig, getConfig, type AppConfig } from "@/lib/config";
 import { getDb, many, one, run, withTx, type Db } from "@/lib/db";
 import { customerSendAllowed, externalCrmWriteAllowed } from "@/lib/domain/autonomy";
 import { parseBriefingCommand, type ParsedCommand } from "@/lib/domain/commands";
@@ -147,6 +149,8 @@ let readyOnce = false;
 export function ready(now = new Date()): Db {
   const db = getDb();
   if (!readyOnce) {
+    assertRuntimeConfig();
+    migrateStoredOutlookTokens(db);
     const config = getConfig();
     const existing = one<{ id: string }>(db, "SELECT id FROM organizations LIMIT 1");
     if (!existing) {
@@ -212,26 +216,33 @@ async function microsoftAccessToken(db: Db, user: UserRow, config: AppConfig): P
     }),
   );
   const nextExpires = new Date(Date.now() + token.expires_in * 1000).toISOString();
-  run(
-    db,
-    `UPDATE users SET microsoft_access_token = ?, microsoft_refresh_token = ?, microsoft_token_expires = ? WHERE id = ?`,
-    [token.access_token, token.refresh_token || user.microsoft_refresh_token, nextExpires, user.id],
-  );
+  const refreshToken = token.refresh_token || user.microsoft_refresh_token;
+  saveOutlookTokens(db, user.id, {
+    accessToken: token.access_token,
+    refreshToken,
+    expiresAt: nextExpires,
+  });
+  user.microsoft_access_token = token.access_token;
+  user.microsoft_refresh_token = refreshToken;
+  user.microsoft_token_expires = nextExpires;
   return token.access_token;
 }
 
 export function getUser(db: Db, id: string): UserRow {
   const user = one<UserRow>(db, "SELECT * FROM users WHERE id = ?", [id]);
   if (!user) throw new ActionError("That seller is not in this workspace.");
-  return user;
+  return revealOutlookTokens(user);
 }
 
 export function getUserByEmail(db: Db, email: string): UserRow | undefined {
-  return one<UserRow>(db, "SELECT * FROM users WHERE email = ?", [email.toLowerCase()]);
+  const user = one<UserRow>(db, "SELECT * FROM users WHERE email = ?", [email.toLowerCase()]);
+  return user ? revealOutlookTokens(user) : undefined;
 }
 
 export function listUsers(db: Db, orgId: string): UserRow[] {
-  return many<UserRow>(db, "SELECT * FROM users WHERE org_id = ? ORDER BY name", [orgId]);
+  return many<UserRow>(db, "SELECT * FROM users WHERE org_id = ? ORDER BY name", [orgId]).map((user) =>
+    revealOutlookTokens(user),
+  );
 }
 
 function orgOf(db: Db, orgId: string): OrgRow {
